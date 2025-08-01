@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>DeskChat - Chat P2P en LAN</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos personalizados para mejorar la apariencia */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a1a; /* Fondo oscuro */
+            color: #e0e0e0;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2c2c2c;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+        .user-list-item.active {
+            background-color: #3a3a3a;
+        }
+        .message-bubble {
+            max-width: 75%;
+            word-wrap: break-word;
+        }
+        .message-sent {
+            background-color: #05603a; /* Verde oscuro para mensajes enviados */
+            align-self: flex-end;
+        }
+        .message-received {
+            background-color: #3a3a3a; /* Gris para mensajes recibidos */
+            align-self: flex-start;
+        }
+        #usernameModal {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+    </style>
+</head>
+<body class="select-none">
+
+    <!-- Modal para pedir el nombre de usuario al inicio -->
+    <div id="usernameModal" class="fixed inset-0 z-50 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-2xl w-full max-w-sm text-center">
+            <h2 class="text-2xl font-bold mb-4 text-white">Bienvenido a DeskChat</h2>
+            <p class="text-gray-400 mb-6">Elige un nombre de usuario para empezar a chatear en tu red local.</p>
+            <input type="text" id="usernameInput" placeholder="Tu nombre de usuario" class="w-full bg-gray-700 border border-gray-600 text-white px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <button id="startChattingBtn" class="mt-6 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Empezar a Chatear</button>
+        </div>
+    </div>
+
+    <!-- Contenedor principal de la aplicación -->
+    <div class="flex h-screen hidden" id="appContainer">
+        <!-- Barra lateral de usuarios -->
+        <div class="w-1/4 bg-gray-800/50 border-r border-gray-700 flex flex-col">
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-xl font-bold text-white">Usuarios Conectados</h2>
+                <p class="text-sm text-gray-400">En tu red local</p>
+            </div>
+            <div id="userList" class="flex-grow overflow-y-auto">
+                <!-- Los usuarios se añadirán aquí dinámicamente -->
+            </div>
+            <div class="p-4 border-t border-gray-700">
+                <p class="text-sm font-semibold text-white">Tú: <span id="currentUser" class="font-normal text-emerald-400"></span></p>
+            </div>
+        </div>
+
+        <!-- Área de chat principal -->
+        <div class="w-3/4 flex flex-col bg-gray-900/50">
+            <!-- Cabecera del chat -->
+            <div id="chatHeader" class="p-4 border-b border-gray-700 flex items-center">
+                 <div class="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mr-4">
+                    <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2V7a2 2 0 012-2h4M5 8h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 001.414 0l2.414-2.414a1 1 0 01.707-.293H15"></path></svg>
+                </div>
+                <div>
+                    <h3 id="chatWithUser" class="text-lg font-bold text-white">Chat General</h3>
+                    <p id="chatWithStatus" class="text-sm text-gray-400">Los mensajes se envían a todos los usuarios conectados.</p>
+                </div>
+            </div>
+            
+            <!-- Contenedor de mensajes -->
+            <div id="messagesContainer" class="flex-grow p-6 overflow-y-auto flex flex-col space-y-4">
+                <!-- Mensajes se añadirán aquí -->
+                 <div class="text-center text-gray-500 my-4">
+                    <p>¡Bienvenido! Selecciona un usuario para chatear o envía un mensaje al chat general.</p>
+                </div>
+            </div>
+
+            <!-- Área de entrada de texto -->
+            <div class="p-4 border-t border-gray-700">
+                <div class="flex items-center bg-gray-800 rounded-lg p-2">
+                    <input type="text" id="messageInput" placeholder="Escribe un mensaje..." class="flex-grow bg-transparent text-white px-4 py-2 focus:outline-none">
+                    <button id="sendMessageBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">
+                        Enviar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Este script se ejecuta en el proceso de renderizado (la ventana del navegador)
+        const { ipcRenderer } = require('electron');
+
+        // --- Elementos del DOM ---
+        const usernameModal = document.getElementById('usernameModal');
+        const usernameInput = document.getElementById('usernameInput');
+        const startChattingBtn = document.getElementById('startChattingBtn');
+        const appContainer = document.getElementById('appContainer');
+        const currentUserSpan = document.getElementById('currentUser');
+        const userListDiv = document.getElementById('userList');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const messagesContainer = document.getElementById('messagesContainer');
+        const chatWithUser = document.getElementById('chatWithUser');
+        
+        let localUsername = '';
+        let selectedUser = null; // Para saber a quién enviar mensajes privados
+
+        // --- Lógica de la interfaz ---
+
+        // Iniciar la aplicación al establecer un nombre de usuario
+        startChattingBtn.addEventListener('click', () => {
+            const username = usernameInput.value.trim();
+            if (username) {
+                localUsername = username;
+                currentUserSpan.textContent = localUsername;
+                usernameModal.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                // Notificar al proceso principal que estamos listos
+                ipcRenderer.send('user:ready', { username });
+                messageInput.focus();
+            }
+        });
+        usernameInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') startChattingBtn.click();
+        });
+
+        // Enviar mensaje
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                const payload = {
+                    to: selectedUser, // null si es para todos
+                    message: message,
+                    from: localUsername
+                };
+                ipcRenderer.send('message:send', payload);
+                
+                // Añadir el mensaje enviado a la UI
+                addMessageToUI(payload.message, 'sent', localUsername);
+                
+                messageInput.value = '';
+                messageInput.focus();
+            }
+        }
+        sendMessageBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Añadir un mensaje a la ventana de chat
+        function addMessageToUI(message, type, sender) {
+            const bubble = document.createElement('div');
+            bubble.classList.add('p-3', 'rounded-lg', 'message-bubble');
+            
+            const senderSpan = document.createElement('div');
+            senderSpan.classList.add('text-xs', 'font-bold', 'mb-1', 'opacity-70');
+            
+            if (type === 'sent') {
+                bubble.classList.add('message-sent');
+                senderSpan.textContent = 'Tú';
+            } else {
+                bubble.classList.add('message-received');
+                senderSpan.textContent = sender;
+            }
+            
+            const messageText = document.createElement('p');
+            messageText.textContent = message;
+
+            bubble.appendChild(senderSpan);
+            bubble.appendChild(messageText);
+            
+            messagesContainer.appendChild(bubble);
+            // Auto-scroll al final
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // --- Eventos IPC desde el proceso principal ---
+
+        // Actualizar la lista de usuarios conectados
+        ipcRenderer.on('users:update', (event, users) => {
+            userListDiv.innerHTML = ''; // Limpiar la lista actual
+            const generalChat = { id: null, username: 'Chat General' };
+            const allUsers = [generalChat, ...users];
+
+            allUsers.forEach(user => {
+                if (user.username === localUsername) return; // No mostrarse a uno mismo
+
+                const userDiv = document.createElement('div');
+                userDiv.className = 'flex items-center p-4 cursor-pointer hover:bg-gray-700/50 transition duration-200 user-list-item';
+                userDiv.dataset.userId = user.id; // Guardar el ID del usuario (null para general)
+                
+                // Marcar como activo si está seleccionado
+                if ((selectedUser === null && user.id === null) || (selectedUser && selectedUser.id === user.id)) {
+                    userDiv.classList.add('active');
+                }
+
+                const statusIndicator = document.createElement('div');
+                statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${user.id === null ? 'bg-blue-500' : 'bg-green-500'}`;
+                
+                const usernameP = document.createElement('p');
+                usernameP.className = 'text-white font-medium';
+                usernameP.textContent = user.username;
+                
+                userDiv.appendChild(statusIndicator);
+                userDiv.appendChild(usernameP);
+                
+                userDiv.addEventListener('click', () => {
+                    // Limpiar mensajes anteriores
+                    messagesContainer.innerHTML = '';
+                    
+                    // Actualizar selección
+                    selectedUser = user.id === null ? null : user;
+                    chatWithUser.textContent = user.username;
+                    
+                    // Actualizar la UI para mostrar la selección
+                    document.querySelectorAll('.user-list-item').forEach(item => item.classList.remove('active'));
+                    userDiv.classList.add('active');
+                    messageInput.focus();
+                });
+
+                userListDiv.appendChild(userDiv);
+            });
+        });
+
+        // Recibir un mensaje
+        ipcRenderer.on('message:receive', (event, { from, message }) => {
+            // TODO: Implementar lógica para mostrar solo si la ventana de chat correcta está abierta
+            addMessageToUI(message, 'received', from);
+        });
+
+    </script>
+</body>
+</html>
+
