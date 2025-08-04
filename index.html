@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>DeskChat - Chat P2P en LAN</title>
+    <title>Delta7 Chat - Chat P2P en LAN</title>
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -51,7 +51,7 @@
     <!-- Modal para pedir el nombre de usuario al inicio -->
     <div id="usernameModal" class="fixed inset-0 z-50 flex items-center justify-center">
         <div class="bg-gray-800 p-8 rounded-lg shadow-2xl w-full max-w-sm text-center">
-            <h2 class="text-2xl font-bold mb-4 text-white">Bienvenido a DeskChat</h2>
+            <h2 class="text-2xl font-bold mb-4 text-white">Bienvenido a Delta7 Chat</h2>
             <p class="text-gray-400 mb-6">Elige un nombre de usuario para empezar a chatear en tu red local.</p>
             <input type="text" id="usernameInput" placeholder="Tu nombre de usuario" class="w-full bg-gray-700 border border-gray-600 text-white px-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500">
             <button id="startChattingBtn" class="mt-6 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">Empezar a Chatear</button>
@@ -71,6 +71,7 @@
             </div>
             <div class="p-4 border-t border-gray-700">
                 <p class="text-sm font-semibold text-white">Tú: <span id="currentUser" class="font-normal text-emerald-400"></span></p>
+                <p class="text-xs text-gray-500 mt-1">Usuarios conectados: <span id="userCount" class="text-emerald-400">0</span></p>
             </div>
         </div>
 
@@ -109,7 +110,7 @@
 
     <script>
         // Este script se ejecuta en el proceso de renderizado (la ventana del navegador)
-        const { ipcRenderer } = require('electron');
+        // Usando la API segura expuesta por preload.js
 
         // --- Elementos del DOM ---
         const usernameModal = document.getElementById('usernameModal');
@@ -118,6 +119,7 @@
         const appContainer = document.getElementById('appContainer');
         const currentUserSpan = document.getElementById('currentUser');
         const userListDiv = document.getElementById('userList');
+        const userCountSpan = document.getElementById('userCount');
         const messageInput = document.getElementById('messageInput');
         const sendMessageBtn = document.getElementById('sendMessageBtn');
         const messagesContainer = document.getElementById('messagesContainer');
@@ -137,7 +139,7 @@
                 usernameModal.classList.add('hidden');
                 appContainer.classList.remove('hidden');
                 // Notificar al proceso principal que estamos listos
-                ipcRenderer.send('user:ready', { username });
+                window.electronAPI.send('user:ready', { username });
                 messageInput.focus();
             }
         });
@@ -154,7 +156,7 @@
                     message: message,
                     from: localUsername
                 };
-                ipcRenderer.send('message:send', payload);
+                window.electronAPI.send('message:send', payload);
                 
                 // Añadir el mensaje enviado a la UI
                 addMessageToUI(payload.message, 'sent', localUsername);
@@ -198,10 +200,13 @@
         // --- Eventos IPC desde el proceso principal ---
 
         // Actualizar la lista de usuarios conectados
-        ipcRenderer.on('users:update', (event, users) => {
+        window.electronAPI.on('users:update', (users) => {
             userListDiv.innerHTML = ''; // Limpiar la lista actual
             const generalChat = { id: null, username: 'Chat General' };
             const allUsers = [generalChat, ...users];
+
+            // Actualizar contador de usuarios
+            userCountSpan.textContent = users.length;
 
             allUsers.forEach(user => {
                 if (user.username === localUsername) return; // No mostrarse a uno mismo
@@ -222,8 +227,18 @@
                 usernameP.className = 'text-white font-medium';
                 usernameP.textContent = user.username;
                 
-                userDiv.appendChild(statusIndicator);
-                userDiv.appendChild(usernameP);
+                // Agregar información adicional para usuarios reales
+                if (user.id !== null) {
+                    const userInfo = document.createElement('p');
+                    userInfo.className = 'text-xs text-gray-500 ml-3';
+                    userInfo.textContent = `${user.ip}:${user.port}`;
+                    userDiv.appendChild(statusIndicator);
+                    userDiv.appendChild(usernameP);
+                    userDiv.appendChild(userInfo);
+                } else {
+                    userDiv.appendChild(statusIndicator);
+                    userDiv.appendChild(usernameP);
+                }
                 
                 userDiv.addEventListener('click', () => {
                     // Limpiar mensajes anteriores
@@ -244,7 +259,7 @@
         });
 
         // Recibir un mensaje
-        ipcRenderer.on('message:receive', (event, { from, message }) => {
+        window.electronAPI.on('message:receive', ({ from, message }) => {
             // TODO: Implementar lógica para mostrar solo si la ventana de chat correcta está abierta
             addMessageToUI(message, 'received', from);
         });

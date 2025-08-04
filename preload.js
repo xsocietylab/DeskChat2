@@ -1,10 +1,37 @@
 // preload.js
+const { contextBridge, ipcRenderer } = require('electron')
 
-// Todas las APIs de Node.js están disponibles en el proceso de precarga.
-// Tiene el mismo sandbox que una extensión de Chrome.
+// Exponer APIs de forma segura al proceso de renderizado
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Enviar mensajes al proceso principal
+  send: (channel, data) => {
+    // Lista de canales permitidos
+    const validChannels = ['user:ready', 'message:send']
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel, data)
+    }
+  },
+  
+  // Recibir mensajes del proceso principal
+  on: (channel, func) => {
+    // Lista de canales permitidos para recibir
+    const validChannels = ['users:update', 'message:receive']
+    if (validChannels.includes(channel)) {
+      ipcRenderer.on(channel, (event, ...args) => func(...args))
+    }
+  },
+  
+  // Remover listeners
+  removeAllListeners: (channel) => {
+    const validChannels = ['users:update', 'message:receive']
+    if (validChannels.includes(channel)) {
+      ipcRenderer.removeAllListeners(channel)
+    }
+  }
+})
+
+// Información de versiones (opcional)
 window.addEventListener('DOMContentLoaded', () => {
-  // Podríamos exponer APIs de forma segura al proceso de renderizado aquí
-  // usando `contextBridge`. Por ahora, lo mantenemos simple.
   const replaceText = (selector, text) => {
     const element = document.getElementById(selector)
     if (element) element.innerText = text
@@ -14,16 +41,4 @@ window.addEventListener('DOMContentLoaded', () => {
     replaceText(`${dependency}-version`, process.versions[dependency])
   }
 })
-
-// Para este proyecto, como deshabilitamos `contextIsolation`, no es estrictamente
-// necesario, pero es una buena práctica de seguridad en Electron.
-// Si `contextIsolation: true`, necesitarías exponer `ipcRenderer` así:
-/*
-const { contextBridge, ipcRenderer } = require('electron')
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  send: (channel, data) => ipcRenderer.send(channel, data),
-  on: (channel, func) => ipcRenderer.on(channel, (event, ...args) => func(...args))
-})
-*/
 
