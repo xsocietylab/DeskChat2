@@ -22,7 +22,7 @@ Una aplicación de chat peer-to-peer para redes locales (LAN) construida con Ele
 
 1. **Clonar o descargar el proyecto**
    ```bash
-   git clone <url-del-repositorio>
+   git clone https://github.com/xsocietylab/DeskChat2.git
    cd delta7-chat
    ```
 
