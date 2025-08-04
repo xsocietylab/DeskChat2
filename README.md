@@ -2,7 +2,6 @@
 
 Una aplicación de chat peer-to-peer para redes locales (LAN) construida con Electron.
 
-**Autor:** Marc Bonnin
 
 ## 🚀 Características
 
